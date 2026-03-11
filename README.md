@@ -1,16 +1,24 @@
-# video_app
+# 🎬 Video Stream App - Projet L3 Télécoms & Info
 
-A new Flutter project.
+Application mobile de streaming vidéo développée dans le cadre de ma Licence 3 à l'**Université Thomas SANKARA (UTS)**.
 
-## Getting Started
+## 🚀 Fonctionnalités
+* **Authentification sécurisée** : Inscription et connexion via Firebase Auth.
+* **Gestion du contenu** : Ajout de vidéos avec stockage Cloud.
+* **Streaming en temps réel** : Lecture fluide des vidéos via un lecteur dédié.
+* **Interface intuitive** : Design moderne respectant les principes de l'UX/UI.
 
-This project is a starting point for a Flutter application.
+## 🛠️ Technologies utilisées
+* **Framework** : [Flutter](https://flutter.dev) (Dart)
+* **Backend** : [Firebase](https://firebase.google.com) (Auth & Firestore)
+* **Stockage Vidéo** : [Cloudinary](https://cloudinary.com)
+* **Versionnage** : Git & GitHub
 
-A few resources to get you started if this is your first Flutter project:
+## 📂 Structure du projet
+* `lib/models/` : Modèles de données (Vidéos, Utilisateurs).
+* `lib/login_page.dart` : Gestion de l'accès sécurisé.
+* `lib/add_video_page.dart` : Interface d'upload et traitement.
+* `lib/home_page.dart` : Flux principal des vidéos.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 👨‍💻 Auteur
+**Diallo** - Étudiant en Licence 3 (UTS)
