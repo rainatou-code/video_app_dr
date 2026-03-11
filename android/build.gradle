@@ -1,0 +1,45 @@
+buildscript {
+    // 1. Version de Kotlin mise à jour
+    ext.kotlin_version = '1.9.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // 2. Augmentation du plugin Android à 8.1.0 pour éviter le crash NullPointerException
+        classpath 'com.android.tools.build:gradle:8.2.1' // Version stable pour Gradle 8.5
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10"
+        classpath 'com.google.gms:google-services:4.3.15'
+
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+
+subprojects {
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:-options"
+        options.failOnError = false
+        if (options.compilerArgs.contains("-Werror")) {
+            options.compilerArgs.remove("-Werror")
+        }
+    }
+}

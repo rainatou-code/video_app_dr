@@ -1,0 +1,68 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+
+android {
+    namespace "com.example.video_app"
+    compileSdkVersion 34
+    // Utilisation d'une version NDK standard plus stable
+    ndkVersion "25.1.8937393"
+
+    compileOptions {
+        // --- MODIFICATION : Passage à JAVA 17 pour correspondre à ton JDK ---
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+
+    }
+
+    kotlinOptions {
+        // --- MODIFICATION : Passage à la JVM 17 ---
+        jvmTarget = '17'
+
+
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        applicationId "com.example.video_app"
+
+        // --- MODIFICATION CRUCIALE : minSdkVersion 24 ---
+        // Le plugin video_compress nécessite au moins l'API 24 (Android 7.0)
+        minSdkVersion 24
+
+        targetSdkVersion 34
+
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {}
+apply plugin: 'com.google.gms.google-services'
