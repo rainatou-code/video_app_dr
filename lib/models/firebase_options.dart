@@ -17,8 +17,8 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      // Supprime le "throw UnsupportedError" et mets ceci à la place temporairement :
-      return android; // On force l'utilisation des clés Android pour voir si ça affiche la page
+
+      return android;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:

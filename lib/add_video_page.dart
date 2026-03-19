@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart'; // Pour kIsWeb
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,12 +18,10 @@ class AddVideoPage extends StatefulWidget {
 class _AddVideoPageState extends State<AddVideoPage> {
   final TextEditingController _titleController = TextEditingController();
   XFile? _videoFile;
-  bool _isProcessing = false; // Pour la compression
-  bool _isUploading = false;   // Pour l'envoi Cloudinary
+  bool _isProcessing = false;
+  bool _isUploading = false;
   double _compressionProgress = 0.0;
   final ImagePicker _picker = ImagePicker();
-
-  // VARIABLE POUR L'ABONNEMENT (Correctif page blanche)
   dynamic _subscription;
 
   @override
@@ -32,14 +30,11 @@ class _AddVideoPageState extends State<AddVideoPage> {
     _initCompressionListener();
   }
 
-  // Initialisation propre de l'écouteur de progression
   void _initCompressionListener() {
     if (!kIsWeb) {
-      // On annule l'ancien s'il existe par sécurité
       _subscription?.unsubscribe();
-
       _subscription = VideoCompress.compressProgress$.subscribe((progress) {
-        if (mounted) { // TRÈS IMPORTANT : vérifie si le widget est encore affiché
+        if (mounted) {
           setState(() {
             _compressionProgress = progress;
           });
@@ -50,44 +45,50 @@ class _AddVideoPageState extends State<AddVideoPage> {
 
   @override
   void dispose() {
-    // NETTOYAGE CRUCIAL (Correctif page blanche)
     if (!kIsWeb) {
-      _subscription?.unsubscribe(); // On coupe l'écoute du flux
-      VideoCompress.cancelCompression(); // On stoppe toute compression en cours
-      VideoCompress.deleteAllCache(); // On vide le cache temporaire
+      _subscription?.unsubscribe();
+      VideoCompress.cancelCompression();
+      VideoCompress.deleteAllCache();
     }
     _titleController.dispose();
     super.dispose();
   }
 
-  // --- ÉTAPE 1 : CHOISIR ET COMPRESSER (AVEC VÉRIFICATION DE TAILLE) ---
+  // --- NOUVELLE LOGIQUE DE RÉCUPÉRATION DE TAILLE ---
+  Future<double> _getFileSizeMB(XFile file) async {
+    // Cette méthode fonctionne sur Web et Mobile
+    int bytes = await file.length();
+    return bytes / (1024 * 1024);
+  }
+
+  // --- ÉTAPE 1 : CHOISIR ET COMPRESSER ---
   Future<void> _pickAndCompressVideo() async {
     if (_isProcessing) return;
 
     final XFile? pickedFile = await _picker.pickVideo(source: ImageSource.gallery);
 
     if (pickedFile != null) {
-      // Reset de l'état pour une nouvelle sélection
       setState(() {
         _compressionProgress = 0.0;
         _videoFile = null;
       });
 
+      double originalSizeMB = await _getFileSizeMB(pickedFile);
+
+      // CAS DU WEB (PC)
       if (kIsWeb) {
         setState(() => _videoFile = pickedFile);
-        _showSnackBar("Web : Vidéo sélectionnée", Colors.orange);
+        _showSnackBar(
+            "Web : Fichier sélectionné (${originalSizeMB.toStringAsFixed(1)} MB). Compression non supportée sur navigateur.",
+            Colors.orange
+        );
         return;
       }
 
-      // LOGIQUE MOBILE : Vérification de la taille avant compression
-      File originalFile = File(pickedFile.path);
-      int originalSizeInBytes = await originalFile.length();
-      double originalSizeMB = originalSizeInBytes / (1024 * 1024);
-
-      // Si moins de 5 MB, on ne compresse pas
+      // CAS DU MOBILE (ANDROID)
       if (originalSizeMB < 5.0) {
         setState(() => _videoFile = pickedFile);
-        _showSnackBar("Fichier léger (${originalSizeMB.toStringAsFixed(1)}MB). Pas de compression.", Colors.blue);
+        _showSnackBar("Fichier léger (${originalSizeMB.toStringAsFixed(1)} MB). Pas besoin de compresser.", Colors.blue);
         return;
       }
 
@@ -104,30 +105,32 @@ class _AddVideoPageState extends State<AddVideoPage> {
         );
 
         if (mediaInfo != null && mediaInfo.file != null) {
-          int compressedSizeInBytes = await mediaInfo.file!.length();
+          double compressedSizeMB = await mediaInfo.file!.length() / (1024 * 1024);
 
-          // Comparaison pour éviter d'alourdir le fichier
-          if (compressedSizeInBytes >= originalSizeInBytes) {
+          if (compressedSizeMB >= originalSizeMB) {
             setState(() => _videoFile = pickedFile);
-            _showSnackBar("Original conservé (plus léger que la compression).", Colors.orange);
+            _showSnackBar("Compression non nécessaire : l'original est plus léger.", Colors.orange);
           } else {
             setState(() => _videoFile = XFile(mediaInfo.file!.path));
-            double newSize = compressedSizeInBytes / (1024 * 1024);
-            _showSnackBar("Réduit : ${originalSizeMB.toStringAsFixed(1)}MB -> ${newSize.toStringAsFixed(1)}MB", Colors.green);
+            // MESSAGE DE SUCCÈS DÉTAILLÉ
+            _showSnackBar(
+                "✅ Vidéo compressée ! ${originalSizeMB.toStringAsFixed(1)} MB ➡️ ${compressedSizeMB.toStringAsFixed(1)} MB",
+                Colors.green
+            );
           }
         }
       } catch (e) {
-        _showSnackBar("Erreur : $e", Colors.red);
+        _showSnackBar("Erreur lors du traitement : $e", Colors.red);
       } finally {
         if (mounted) setState(() => _isProcessing = false);
       }
     }
   }
 
-  // --- ÉTAPE 2 : ENVOYER VERS CLOUDINARY ---
+  // --- ENVOYER VERS CLOUDINARY ---
   Future<void> _uploadVideo() async {
     if (_videoFile == null || _titleController.text.trim().isEmpty) {
-      _showSnackBar("Titre et vidéo requis", Colors.orange);
+      _showSnackBar("Veuillez remplir le titre et choisir une vidéo.", Colors.orange);
       return;
     }
 
@@ -165,10 +168,10 @@ class _AddVideoPageState extends State<AddVideoPage> {
         if (!kIsWeb) await VideoCompress.deleteAllCache();
         if (mounted) Navigator.pop(context);
       } else {
-        _showSnackBar("Erreur Cloudinary : ${response.statusCode}", Colors.red);
+        _showSnackBar("Erreur serveur : ${response.statusCode}", Colors.red);
       }
     } catch (e) {
-      _showSnackBar("Erreur upload : $e", Colors.red);
+      _showSnackBar("Échec de l'envoi : $e", Colors.red);
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -176,72 +179,101 @@ class _AddVideoPageState extends State<AddVideoPage> {
 
   void _showSnackBar(String message, Color color) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: color,
+            duration: const Duration(seconds: 4),
+          )
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Publier une vidéo")),
+      appBar: AppBar(title: const Text("Publication Vidéo UTS")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(25),
         child: Column(
           children: [
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(labelText: "Titre", border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: "Titre de la vidéo",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.title),
+              ),
             ),
             const SizedBox(height: 30),
 
             if (_isProcessing)
               Column(
                 children: [
+                  const Text("Compression en cours...", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
                   LinearProgressIndicator(value: _compressionProgress / 100),
                   const SizedBox(height: 10),
-                  Text("Traitement : ${_compressionProgress.toInt()}%"),
+                  Text("${_compressionProgress.toInt()}% complété"),
                 ],
               )
             else
               Container(
-                height: 150,
+                height: 180,
                 width: double.infinity,
-                decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(15)),
+                decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.grey[300]!)
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.video_file, size: 50, color: _videoFile == null ? Colors.grey : Colors.blue),
-                    Text(_videoFile == null ? "Aucun fichier choisi" : "Vidéo prête"),
+                    Icon(
+                        _videoFile == null ? Icons.cloud_upload_outlined : Icons.check_circle_outline,
+                        size: 60,
+                        color: _videoFile == null ? Colors.grey : Colors.green
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _videoFile == null ? "Aucune vidéo sélectionnée" : "Fichier prêt pour l'envoi",
+                      style: TextStyle(color: _videoFile == null ? Colors.grey[700] : Colors.green[700]),
+                    ),
                   ],
                 ),
               ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
 
             ElevatedButton.icon(
               onPressed: _isProcessing || _isUploading ? null : _pickAndCompressVideo,
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text("CHOISIR UNE VIDÉO"),
+              icon: const Icon(Icons.video_collection),
+              label: const Text("CHOISIR SUR L'APPAREIL"),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
             ),
 
-            const SizedBox(height: 50),
+            const SizedBox(height: 40),
 
             if (_isUploading)
               const Column(
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10),
-                  Text("Envoi au Cloud..."),
+                  CircularProgressIndicator(color: Colors.blue),
+                  SizedBox(height: 15),
+                  Text("Transfert vers le serveur Cloudinary...", style: TextStyle(fontStyle: FontStyle.italic)),
                 ],
               )
             else
               ElevatedButton(
                 onPressed: _videoFile != null ? _uploadVideo : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  minimumSize: const Size.fromHeight(55),
+                  backgroundColor: Colors.blue[700],
+                  minimumSize: const Size.fromHeight(60),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text("PUBLIER MAINTENANT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text(
+                    "PUBLIER SUR LA PLATEFORME",
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)
+                ),
               ),
           ],
         ),
