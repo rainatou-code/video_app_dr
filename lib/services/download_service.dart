@@ -1,18 +1,15 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import pour l'ID utilisateur
 import 'database_helper.dart';
 
 class DownloadService {
-  // Configuration globale de Dio avec des Timeouts adaptés au contexte local
+  // Configuration globale de Dio avec des Timeouts adaptés
   final Dio _dio = Dio(
     BaseOptions(
-      // Temps max pour établir la connexion (15 secondes)
       connectTimeout: const Duration(seconds: 15),
-      // Temps max entre deux paquets de données (60 secondes)
-      // On laisse une marge car le débit peut chuter brusquement
       receiveTimeout: const Duration(seconds: 60),
-      // Temps max pour envoyer une requête
       sendTimeout: const Duration(seconds: 15),
     ),
   );
@@ -25,7 +22,7 @@ class DownloadService {
     required Function(double) onProgress,
   }) async {
     try {
-      // 1. Définir l'emplacement de stockage sécurisé (Dossier App Documents)
+      // 1. Définir l'emplacement de stockage sécurisé
       final directory = await getApplicationDocumentsDirectory();
       final String savePath = '${directory.path}/$fileName.mp4';
 
@@ -35,27 +32,30 @@ class DownloadService {
         savePath,
         onReceiveProgress: (received, total) {
           if (total != -1) {
-            // Calcul du pourcentage (0.0 à 1.0) pour la barre de progression
             onProgress(received / total);
           }
         },
-        // Très important : supprime le fichier partiel si le téléchargement échoue
         deleteOnError: true,
       );
 
-      // 3. Vérification du fichier et enregistrement SQLite
+      // 3. Récupération de l'ID utilisateur et enregistrement SQLite
       final File videoFile = File(savePath);
-      if (await videoFile.exists()) {
+      final String? userId = FirebaseAuth.instance.currentUser?.uid; //
+
+      if (await videoFile.exists() && userId != null) {
+        // On passe désormais le userId à la fonction insertVideo
         await DatabaseHelper.instance.insertVideo(
+          userId, // ID de l'utilisateur connecté
           cloudinaryId,
           fileName,
           savePath,
           taille: await videoFile.length(),
         );
+      } else if (userId == null) {
+        throw Exception("Utilisateur non connecté. Impossible d'enregistrer la vidéo.");
       }
 
     } on DioException catch (e) {
-      // Gestion des erreurs spécifiques à Dio (Timeouts, Réseau, etc.)
       _handleDioError(e);
       rethrow;
     } catch (e) {
@@ -67,11 +67,11 @@ class DownloadService {
   /// Logique de traitement des erreurs pour faciliter le débogage
   void _handleDioError(DioException e) {
     if (e.type == DioExceptionType.connectionTimeout) {
-      print("Erreur : Délai de connexion dépassé. Le serveur ne répond pas.");
+      print("Erreur : Délai de connexion dépassé.");
     } else if (e.type == DioExceptionType.receiveTimeout) {
       print("Erreur : La connexion a été perdue pendant le téléchargement.");
     } else if (e.type == DioExceptionType.badResponse) {
-      print("Erreur Serveur : ${e.response?.statusCode} - Vérifiez l'URL Cloudinary.");
+      print("Erreur Serveur : ${e.response?.statusCode} - Vérifiez l'URL.");
     } else {
       print("Erreur Réseau : ${e.message}");
     }

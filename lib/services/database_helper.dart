@@ -1,39 +1,44 @@
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-
+// Importation cruciale pour détecter le Web
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class DatabaseHelper {
-  // Instance unique et privée (Singleton)
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
   DatabaseHelper._init();
 
-  // Getter pour accéder à la base de données
-  Future<Database> get database async {
+  Future<Database?> get database async {
+    // Si on est sur le Web, on ne cherche même pas à ouvrir la base de données
+    if (kIsWeb) return null;
+
     if (_database != null) return _database!;
     _database = await _initDB('video_app_uts.db');
-    return _database!;
+    return _database;
   }
 
-  // Initialisation et ouverture de la base
-  Future<Database> _initDB(String filePath) async {
+  Future<Database?> _initDB(String filePath) async {
+    // Sécurité supplémentaire pour le Web
+    if (kIsWeb) return null;
+
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
   }
 
-  // Création de la table
   Future _createDB(Database db, int version) async {
     await db.execute('''
       CREATE TABLE downloaded_videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
         cloudinary_id TEXT NOT NULL,
         titre TEXT NOT NULL,
         chemin_local TEXT NOT NULL,
@@ -44,18 +49,27 @@ class DatabaseHelper {
     ''');
   }
 
-  // --- FONCTION D'INSERTION ---
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute("ALTER TABLE downloaded_videos ADD COLUMN user_id TEXT DEFAULT 'anonyme'");
+    }
+  }
+
   Future<int> insertVideo(
+      String userId,
       String cloudinaryId,
       String titre,
       String cheminLocal,
       {String? cheminMiniature, int? taille}
       ) async {
-    // 1. On récupère l'accès à la base de données
-    final db = await instance.database;
+    // Sur le Web, on simule une insertion réussie (ou on ne fait rien)
+    if (kIsWeb) return 0;
 
-    // 2. On prépare les données sous forme de Map (clé: valeur)
+    final db = await instance.database;
+    if (db == null) return 0;
+
     final data = {
+      'user_id': userId,
       'cloudinary_id': cloudinaryId,
       'titre': titre,
       'chemin_local': cheminLocal,
@@ -64,7 +78,6 @@ class DatabaseHelper {
       'date_telechargement': DateTime.now().toIso8601String(),
     };
 
-    // 3. On insère dans la table 'downloaded_videos'
     return await db.insert(
       'downloaded_videos',
       data,
@@ -72,49 +85,40 @@ class DatabaseHelper {
     );
   }
 
-  // Récupérer toutes les vidéos de la base de données
-  Future<List<Map<String, dynamic>>> getDownloadedVideos() async {
-    // 1. Accéder à la base
+  Future<List<Map<String, dynamic>>> getDownloadedVideosByUser(String userId) async {
+    // Sur le Web, on renvoie simplement une liste vide sans faire crash l'app
+    if (kIsWeb) return [];
+
     final db = await instance.database;
+    if (db == null) return [];
 
-    // 2. Faire la requête (trié par date la plus récente en premier)
-    final result = await db.query('downloaded_videos', orderBy: 'date_telechargement DESC');
-
-    // 3. Retourner le résultat sous forme de liste
-    return result;
+    return await db.query(
+      'downloaded_videos',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'date_telechargement DESC',
+    );
   }
-
-  // Fermer la base de données
-  Future close() async {
-    final db = await instance.database;
-    db.close();
-  }
-
 
   Future<void> deleteVideo(int id, String cheminLocal) async {
-    // 1. On récupère l'accès à la base de données
-    final db = await instance.database;
+    if (kIsWeb) return;
 
-    // 2. On supprime la ligne dans SQLite
+    final db = await instance.database;
+    if (db == null) return;
+
     await db.delete(
       'downloaded_videos',
       where: 'id = ?',
       whereArgs: [id],
     );
 
-    // 3. On supprime le fichier physique du téléphone
     try {
       final file = File(cheminLocal);
       if (await file.exists()) {
         await file.delete();
-        print("Fichier vidéo supprimé du stockage.");
       }
     } catch (e) {
-      print("Erreur lors de la suppression du fichier : $e");
+      print("Erreur suppression fichier : $e");
     }
   }
 }
-
-
-
-

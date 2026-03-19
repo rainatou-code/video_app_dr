@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'video_detail_page.dart';
 import 'add_video_page.dart';
 import 'services/download_service.dart';
-import 'services/database_helper.dart'; // Import nécessaire pour la vérification locale
+import 'services/database_helper.dart';
+import 'screens/downloaded_videos_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,11 +18,10 @@ class _HomePageState extends State<HomePage> {
   String searchQuery = "";
   late Stream<QuerySnapshot> _videoStream;
 
-  // --- 1. VARIABLES D'ÉTAT (TÉLÉCHARGEMENT & BADGES) ---
   bool _isDownloading = false;
   double _progress = 0.0;
   String _currentDownloadId = "";
-  List<String> _downloadedIds = []; // Stocke les IDs des vidéos déjà présentes en local
+  List<String> _downloadedIds = [];
 
   @override
   void initState() {
@@ -31,21 +31,31 @@ class _HomePageState extends State<HomePage> {
         .orderBy('createdAt', descending: true)
         .snapshots();
 
-    // Charger la liste des vidéos déjà téléchargées au démarrage
     _refreshDownloadedList();
   }
 
-  // --- FONCTION POUR METTRE À JOUR LA LISTE DES BADGES ---
   Future<void> _refreshDownloadedList() async {
-    final localVideos = await DatabaseHelper.instance.getDownloadedVideos();
-    if (mounted) {
-      setState(() {
-        _downloadedIds = localVideos.map((v) => v['cloudinary_id'] as String).toList();
-      });
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (userId != null) {
+      final localVideos = await DatabaseHelper.instance.getDownloadedVideosByUser(userId);
+      if (mounted) {
+        setState(() {
+          _downloadedIds = localVideos.map((v) => v['cloudinary_id'] as String).toList();
+        });
+      }
     }
   }
 
-  // --- 2. FONCTION DE TÉLÉCHARGEMENT MISE À JOUR ---
+  // Fonction pour optimiser l'URL de l'image (réduit le poids pour éviter les Timeouts)
+  String _getOptimizedUrl(String originalUrl) {
+    if (originalUrl.contains("cloudinary.com")) {
+      // On force la qualité automatique et une largeur de 400px pour économiser la data
+      return originalUrl.replaceAll("/upload/", "/upload/c_scale,w_400,q_auto,f_auto/");
+    }
+    return originalUrl;
+  }
+
   void _executetelechargement(String url, String title, String id) async {
     if (_isDownloading) return;
 
@@ -66,7 +76,6 @@ class _HomePageState extends State<HomePage> {
         },
       );
 
-      // Mise à jour de la liste des badges après succès
       await _refreshDownloadedList();
 
       if (mounted) {
@@ -117,6 +126,48 @@ class _HomePageState extends State<HomePage> {
           IconButton(icon: const Icon(Icons.logout), onPressed: () => FirebaseAuth.instance.signOut()),
         ],
       ),
+
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            UserAccountsDrawerHeader(
+              accountName: Text(FirebaseAuth.instance.currentUser?.displayName ?? "Utilisateur"),
+              accountEmail: Text(FirebaseAuth.instance.currentUser?.email ?? ""),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, color: Colors.blue, size: 40),
+              ),
+              decoration: const BoxDecoration(color: Colors.blue),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home, color: Colors.blue),
+              title: const Text('Accueil'),
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_for_offline, color: Colors.blue),
+              title: const Text('Mes Téléchargements'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DownloadedVideosScreen(),
+                  ),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Déconnexion'),
+              onTap: () => FirebaseAuth.instance.signOut(),
+            ),
+          ],
+        ),
+      ),
+
       body: StreamBuilder<QuerySnapshot>(
         stream: _videoStream,
         builder: (context, snapshot) {
@@ -137,6 +188,9 @@ class _HomePageState extends State<HomePage> {
               final String videoUrl = data['url'] ?? "";
               final String videoTitle = data['titre'] ?? "Sans titre";
 
+              // Génération de l'URL de la miniature optimisée
+              String thumbUrl = data['thumbnailUrl'] ?? videoUrl.replaceAll(RegExp(r'\.(mp4|mov|avi|wmv)$'), '.jpg');
+
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -150,8 +204,26 @@ class _HomePageState extends State<HomePage> {
                           ClipRRect(
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
                             child: Image.network(
-                              data['thumbnailUrl'] ?? videoUrl.replaceAll(RegExp(r'\.(mp4|mov|avi|wmv)$'), '.jpg'),
-                              height: 200, width: double.infinity, fit: BoxFit.cover,
+                              _getOptimizedUrl(thumbUrl), // Utilisation de l'URL compressée
+                              height: 200,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              // --- CORRECTION : Gestion des erreurs de connexion ---
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: 200,
+                                  width: double.infinity,
+                                  color: Colors.grey[300],
+                                  child: const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.broken_image, color: Colors.grey, size: 50),
+                                      SizedBox(height: 8),
+                                      Text("Erreur réseau", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
                           const Icon(Icons.play_circle_outline, color: Colors.white, size: 60),
@@ -161,10 +233,8 @@ class _HomePageState extends State<HomePage> {
                     ListTile(
                       title: Text(videoTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text("Par ${data['createur'] ?? 'Anonyme'}"),
-
-                      // --- 3. LOGIQUE D'AFFICHAGE DU BADGE OU DE LA PROGRESSION ---
                       trailing: _downloadedIds.contains(videoId)
-                          ? const Icon(Icons.check_circle, color: Colors.green, size: 30) // Déjà téléchargé
+                          ? const Icon(Icons.check_circle, color: Colors.green, size: 30)
                           : (_isDownloading && _currentDownloadId == videoId)
                           ? SizedBox(
                         width: 50,
