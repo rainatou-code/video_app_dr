@@ -1,6 +1,15 @@
-# 🎬 Video Stream App - Projet L3 Télécoms & Info
+# 🎬 Video Stream App 
 
 Application mobile de streaming vidéo développée dans le cadre de ma Licence 3 à l'**Université Thomas SANKARA (UTS)**.
+
+Mon Application Vidéo
+
+📥 Téléchargement
+Pour installer l'application sur votre Android, cliquez sur le lien direct ci-dessous :
+
+[👉 Télécharger l'APK v1.0.0](https://github.com/rainatou-code/video_app_dr/releases/download/v1.0.0/app-release.apk)
+
+
 
 ## 🚀 Fonctionnalités
 * **Authentification sécurisée** : Inscription et connexion via Firebase Auth.
