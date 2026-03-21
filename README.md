@@ -6,8 +6,7 @@ Mon Application Vidéo
 
 📥 Téléchargement
 Pour installer l'application sur votre Android, cliquez sur le lien direct ci-dessous :
-
-[👉 Télécharger l'APK v1.0.0](https://github.com/rainatou-code/video_app_dr/releases/download/v1.0.0/app-release.apk)
+[cliquez ici pour telecharger l'apk](https://github.com/rainatou-code/video_app_dr/releases/download/v1.0.0/app-release.apk)
 
 
 
